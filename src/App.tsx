@@ -1,11 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Users, Trophy, RotateCcw, Settings, Palette, Type } from 'lucide-react';
+import { Plus, Trash2, Users, Trophy, RotateCcw, Settings, Palette, Type, Share2, Gift, Crown } from 'lucide-react';
 
 interface Participant {
   id: string;
   name: string;
 }
 
+interface Prize {
+  id: string;
+  name: string;
+  description: string;
+}
 interface WheelStyle {
   id: string;
   name: string;
@@ -57,10 +62,14 @@ function App() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [newParticipants, setNewParticipants] = useState('');
   const [isSpinning, setIsSpinning] = useState(false);
-  const [winner, setWinner] = useState<string | null>(null);
+  const [winners, setWinners] = useState<string[]>([]);
+  const [numberOfWinners, setNumberOfWinners] = useState(1);
   const [isEditingName, setIsEditingName] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<WheelStyle>(wheelStyles[0]);
   const [showStylePanel, setShowStylePanel] = useState(false);
+  const [prizes, setPrizes] = useState<Prize[]>([]);
+  const [newPrize, setNewPrize] = useState({ name: '', description: '' });
+  const [showPrizesPanel, setShowPrizesPanel] = useState(false);
   const wheelRef = useRef<HTMLDivElement>(null);
   const [rotation, setRotation] = useState(0);
 
@@ -85,38 +94,110 @@ function App() {
   const removeParticipant = (id: string) => {
     setParticipants(participants.filter(p => p.id !== id));
     if (participants.length <= 1) {
-      setWinner(null);
+      setWinners([]);
     }
   };
 
   const clearAllParticipants = () => {
     setParticipants([]);
-    setWinner(null);
+    setWinners([]);
+  };
+
+  const addPrize = () => {
+    if (!newPrize.name.trim()) return;
+    
+    const prize: Prize = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      name: newPrize.name.trim(),
+      description: newPrize.description.trim()
+    };
+    
+    setPrizes([...prizes, prize]);
+    setNewPrize({ name: '', description: '' });
+  };
+
+  const removePrize = (id: string) => {
+    setPrizes(prizes.filter(p => p.id !== id));
   };
 
   const spinWheel = () => {
-    if (participants.length < 2) return;
+    if (participants.length < numberOfWinners) return;
     
     setIsSpinning(true);
-    setWinner(null);
+    setWinners([]);
     
-    const winnerIndex = Math.floor(Math.random() * participants.length);
+    // Seleccionar múltiples ganadores únicos
+    const availableParticipants = [...participants];
+    const selectedWinners: string[] = [];
+    
+    for (let i = 0; i < numberOfWinners && availableParticipants.length > 0; i++) {
+      const randomIndex = Math.floor(Math.random() * availableParticipants.length);
+      selectedWinners.push(availableParticipants[randomIndex].name);
+      availableParticipants.splice(randomIndex, 1);
+    }
+    
+    // Usar el primer ganador para la animación de la ruleta
+    const mainWinnerIndex = participants.findIndex(p => p.name === selectedWinners[0]);
     const degreesPerSlice = 360 / participants.length;
     const extraSpins = 5 + Math.random() * 3;
-    const finalRotation = rotation + (360 * extraSpins) + (360 - (winnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
+    const finalRotation = rotation + (360 * extraSpins) + (360 - (mainWinnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
     
     setRotation(finalRotation);
     
     setTimeout(() => {
-      setWinner(participants[winnerIndex].name);
+      setWinners(selectedWinners);
       setIsSpinning(false);
     }, 4000);
   };
 
   const resetRaffle = () => {
-    setWinner(null);
+    setWinners([]);
     setRotation(0);
     setIsSpinning(false);
+  };
+
+  const shareWinners = () => {
+    const winnersText = winners.length === 1 
+      ? `🎉 ¡Ganador de "${raffleName}": ${winners[0]}!`
+      : `🎉 ¡Ganadores de "${raffleName}": ${winners.join(', ')}!`;
+    
+    const prizeText = prizes.length > 0 
+      ? `\n🎁 Premios: ${prizes.map(p => p.name).join(', ')}`
+      : '';
+    
+    const shareText = `${winnersText}${prizeText}\n\n#Rifa #Sorteo #Ganador`;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: `Ganador de ${raffleName}`,
+        text: shareText,
+      });
+    } else {
+      // Fallback para navegadores que no soportan Web Share API
+      const encodedText = encodeURIComponent(shareText);
+      const urls = {
+        twitter: `https://twitter.com/intent/tweet?text=${encodedText}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}&quote=${encodedText}`,
+        whatsapp: `https://wa.me/?text=${encodedText}`
+      };
+      
+      // Crear modal con opciones de compartir
+      const shareModal = document.createElement('div');
+      shareModal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: white; padding: 20px; border-radius: 10px; max-width: 400px;">
+            <h3 style="margin-bottom: 15px;">Compartir Resultado</h3>
+            <div style="margin-bottom: 15px;">
+              <a href="${urls.twitter}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #1DA1F2; color: white; text-decoration: none; border-radius: 5px; text-align: center;">Twitter</a>
+              <a href="${urls.facebook}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #4267B2; color: white; text-decoration: none; border-radius: 5px; text-align: center;">Facebook</a>
+              <a href="${urls.whatsapp}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #25D366; color: white; text-decoration: none; border-radius: 5px; text-align: center;">WhatsApp</a>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" style="width: 100%; padding: 10px; background: #6B7280; color: white; border: none; border-radius: 5px; cursor: pointer;">Cerrar</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(shareModal);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -249,6 +330,13 @@ function App() {
                 <Palette className="h-5 w-5 text-blue-600" />
                 <span className="text-blue-600 font-semibold">Estilo</span>
               </button>
+              <button
+                onClick={() => setShowPrizesPanel(!showPrizesPanel)}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-100 hover:bg-green-200 rounded-lg transition-colors"
+              >
+                <Gift className="h-5 w-5 text-green-600" />
+                <span className="text-green-600 font-semibold">Premios</span>
+              </button>
               <div className="flex items-center space-x-2 text-blue-700">
                 <Users className="h-5 w-5" />
                 <span className="font-semibold">{participants.length} participantes</span>
@@ -285,6 +373,54 @@ function App() {
                   </div>
                   <span className="text-sm font-semibold text-gray-700">{style.name}</span>
                 </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prizes Panel */}
+      {showPrizesPanel && (
+        <div className="bg-white/90 backdrop-blur-sm border-b border-green-200 shadow-lg">
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <h3 className="text-lg font-semibold text-green-900 mb-3">Premios de la Rifa</h3>
+            <div className="grid md:grid-cols-2 gap-4 mb-4">
+              <input
+                type="text"
+                placeholder="Nombre del premio"
+                value={newPrize.name}
+                onChange={(e) => setNewPrize({...newPrize, name: e.target.value})}
+                className="px-3 py-2 border border-green-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Descripción (opcional)"
+                value={newPrize.description}
+                onChange={(e) => setNewPrize({...newPrize, description: e.target.value})}
+                className="px-3 py-2 border border-green-300 rounded-lg focus:border-green-500 focus:outline-none"
+              />
+            </div>
+            <button onClick={addPrize} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors">
+              Agregar Premio
+            </button>
+            <div className="grid md:grid-cols-3 gap-3 mt-4">
+              {prizes.map((prize) => (
+                <div key={prize.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-green-900">{prize.name}</h4>
+                      {prize.description && (
+                        <p className="text-sm text-green-700 mt-1">{prize.description}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => removePrize(prize.id)}
+                      className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors ml-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -387,12 +523,30 @@ function App() {
             </div>
 
             {/* Control Buttons */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-blue-100 mb-4">
+              <div className="flex items-center justify-center space-x-4">
+                <label className="flex items-center space-x-2 text-blue-900 font-semibold">
+                  <Crown className="h-5 w-5 text-yellow-500" />
+                  <span>Número de ganadores:</span>
+                </label>
+                <select
+                  value={numberOfWinners}
+                  onChange={(e) => setNumberOfWinners(parseInt(e.target.value))}
+                  className="px-3 py-2 border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
+                >
+                  {Array.from({length: Math.min(participants.length, 10)}, (_, i) => i + 1).map(num => (
+                    <option key={num} value={num}>{num}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="flex space-x-4">
               <button
                 onClick={spinWheel}
-                disabled={participants.length < 2 || isSpinning}
+                disabled={participants.length < numberOfWinners || isSpinning}
                 className={`px-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all duration-200 ${
-                  participants.length < 2 || isSpinning
+                  participants.length < numberOfWinners || isSpinning
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transform hover:scale-105'
                 }`}
@@ -409,11 +563,38 @@ function App() {
             </div>
 
             {/* Winner Display */}
-            {winner && (
+            {winners.length > 0 && (
               <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-2xl text-center animate-bounce">
                 <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-300" />
-                <h2 className="text-2xl font-bold mb-2">¡Ganador!</h2>
-                <p className="text-xl font-semibold">{winner}</p>
+                <h2 className="text-2xl font-bold mb-2">
+                  {winners.length === 1 ? '¡Ganador!' : '¡Ganadores!'}
+                </h2>
+                <div className="space-y-2">
+                  {winners.map((winner, index) => (
+                    <p key={index} className="text-xl font-semibold">
+                      {winners.length > 1 && `${index + 1}. `}{winner}
+                    </p>
+                  ))}
+                </div>
+                {prizes.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-blue-400">
+                    <h3 className="text-lg font-semibold mb-2">🎁 Premios:</h3>
+                    <div className="space-y-1">
+                      {prizes.map((prize, index) => (
+                        <p key={prize.id} className="text-sm">
+                          {prize.name}{prize.description && ` - ${prize.description}`}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={shareWinners}
+                  className="mt-4 px-6 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center space-x-2 mx-auto"
+                >
+                  <Share2 className="h-5 w-5" />
+                  <span>Compartir Resultado</span>
+                </button>
               </div>
             )}
           </div>
@@ -500,10 +681,10 @@ function App() {
                 )}
               </div>
 
-              {participants.length > 0 && participants.length < 2 && (
+              {participants.length > 0 && participants.length < numberOfWinners && (
                 <div className="mt-4 p-3 bg-yellow-100 border border-yellow-300 rounded-xl">
                   <p className="text-yellow-800 text-sm font-semibold">
-                    ⚠️ Necesitas al menos 2 participantes para realizar la rifa
+                    ⚠️ Necesitas al menos {numberOfWinners} participantes para realizar la rifa
                   </p>
                 </div>
               )}
