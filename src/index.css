@@ -4,11 +4,11 @@
 
 @layer utilities {
   .animate-spin-slow {
-    animation: spin 4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+    animation: spin 3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
   }
   
-  .duration-4000 {
-    transition-duration: 4000ms;
+  .duration-3000 {
+    transition-duration: 3000ms;
   }
   
   .w-88 {

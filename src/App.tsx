@@ -126,28 +126,42 @@ function App() {
     setIsSpinning(true);
     setWinners([]);
     
-    // Seleccionar múltiples ganadores únicos
-    const availableParticipants = [...participants];
-    const selectedWinners: string[] = [];
-    
-    for (let i = 0; i < numberOfWinners && availableParticipants.length > 0; i++) {
-      const randomIndex = Math.floor(Math.random() * availableParticipants.length);
-      selectedWinners.push(availableParticipants[randomIndex].name);
-      availableParticipants.splice(randomIndex, 1);
-    }
-    
-    // Usar el primer ganador para la animación de la ruleta
-    const mainWinnerIndex = participants.findIndex(p => p.name === selectedWinners[0]);
-    const degreesPerSlice = 360 / participants.length;
-    const extraSpins = 5 + Math.random() * 3;
-    const finalRotation = rotation + (360 * extraSpins) + (360 - (mainWinnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
-    
-    setRotation(finalRotation);
-    
-    setTimeout(() => {
+    // Función para girar la ruleta múltiples veces
+    const performSpins = async () => {
+      const availableParticipants = [...participants];
+      const selectedWinners: string[] = [];
+      const degreesPerSlice = 360 / participants.length;
+      
+      for (let spin = 0; spin < numberOfWinners; spin++) {
+        // Seleccionar ganador para este giro
+        const randomIndex = Math.floor(Math.random() * availableParticipants.length);
+        const winner = availableParticipants[randomIndex];
+        selectedWinners.push(winner.name);
+        availableParticipants.splice(randomIndex, 1);
+        
+        // Calcular rotación para este ganador
+        const winnerIndex = participants.findIndex(p => p.id === winner.id);
+        const extraSpins = 3 + Math.random() * 2; // Menos giros por cada vuelta
+        const targetRotation = rotation + (360 * extraSpins) + (360 - (winnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
+        
+        setRotation(targetRotation);
+        
+        // Esperar a que termine la animación antes del siguiente giro
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Mostrar ganador temporal si hay más giros
+        if (spin < numberOfWinners - 1) {
+          setWinners([...selectedWinners]);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // Mostrar todos los ganadores finales
       setWinners(selectedWinners);
       setIsSpinning(false);
-    }, 4000);
+    };
+    
+    performSpins();
   };
 
   const resetRaffle = () => {
@@ -173,30 +187,13 @@ function App() {
         text: shareText,
       });
     } else {
-      // Fallback para navegadores que no soportan Web Share API
+      // Crear URLs para compartir
       const encodedText = encodeURIComponent(shareText);
-      const urls = {
-        twitter: `https://twitter.com/intent/tweet?text=${encodedText}`,
-        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}&quote=${encodedText}`,
-        whatsapp: `https://wa.me/?text=${encodedText}`
-      };
+      const currentUrl = encodeURIComponent(window.location.href);
       
-      // Crear modal con opciones de compartir
-      const shareModal = document.createElement('div');
-      shareModal.innerHTML = `
-        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-          <div style="background: white; padding: 20px; border-radius: 10px; max-width: 400px;">
-            <h3 style="margin-bottom: 15px;">Compartir Resultado</h3>
-            <div style="margin-bottom: 15px;">
-              <a href="${urls.twitter}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #1DA1F2; color: white; text-decoration: none; border-radius: 5px; text-align: center;">Twitter</a>
-              <a href="${urls.facebook}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #4267B2; color: white; text-decoration: none; border-radius: 5px; text-align: center;">Facebook</a>
-              <a href="${urls.whatsapp}" target="_blank" style="display: block; padding: 10px; margin: 5px 0; background: #25D366; color: white; text-decoration: none; border-radius: 5px; text-align: center;">WhatsApp</a>
-            </div>
-            <button onclick="this.parentElement.parentElement.remove()" style="width: 100%; padding: 10px; background: #6B7280; color: white; border: none; border-radius: 5px; cursor: pointer;">Cerrar</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(shareModal);
+      // Abrir directamente en la red social más popular (Twitter)
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodedText}`;
+      window.open(twitterUrl, '_blank', 'width=600,height=400');
     }
   };
 
@@ -442,10 +439,10 @@ function App() {
                 
                 <svg 
                   ref={wheelRef}
-                  className={`relative w-88 h-88 m-4 transition-transform duration-4000 ease-out ${isSpinning ? 'animate-spin-slow' : ''}`}
+                  className={`relative w-88 h-88 m-4 transition-transform duration-3000 ease-out ${isSpinning ? 'animate-spin-slow' : ''}`}
                   style={{ 
                     transform: `rotate(${rotation}deg)`,
-                    transition: isSpinning ? 'transform 4s cubic-bezier(0.23, 1, 0.32, 1)' : 'none'
+                    transition: isSpinning ? 'transform 3s cubic-bezier(0.23, 1, 0.32, 1)' : 'none'
                   }}
                   viewBox="-180 -180 360 360"
                 >
@@ -564,7 +561,7 @@ function App() {
 
             {/* Winner Display */}
             {winners.length > 0 && (
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-2xl text-center animate-bounce">
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-2xl text-center">
                 <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-300" />
                 <h2 className="text-2xl font-bold mb-2">
                   {winners.length === 1 ? '¡Ganador!' : '¡Ganadores!'}
