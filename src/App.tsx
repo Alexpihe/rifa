@@ -18,6 +18,13 @@ interface WheelStyle {
   textColor: string;
 }
 
+interface SpinState {
+  currentSpin: number;
+  totalSpins: number;
+  winners: string[];
+  availableParticipants: Participant[];
+}
+
 const wheelStyles: WheelStyle[] = [
   {
     id: 'classic',
@@ -70,6 +77,12 @@ function App() {
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [newPrize, setNewPrize] = useState({ name: '', description: '' });
   const [showPrizesPanel, setShowPrizesPanel] = useState(false);
+  const [spinState, setSpinState] = useState<SpinState>({
+    currentSpin: 0,
+    totalSpins: 0,
+    winners: [],
+    availableParticipants: []
+  });
   const wheelRef = useRef<HTMLDivElement>(null);
   const [rotation, setRotation] = useState(0);
 
@@ -121,80 +134,146 @@ function App() {
   };
 
   const spinWheel = () => {
-    if (participants.length < numberOfWinners) return;
-    
-    setIsSpinning(true);
-    setWinners([]);
-    
-    // Función para girar la ruleta múltiples veces
-    const performSpins = async () => {
-      const availableParticipants = [...participants];
-      const selectedWinners: string[] = [];
-      const degreesPerSlice = 360 / participants.length;
+    // Si no hay giro en progreso, inicializar
+    if (spinState.currentSpin === 0) {
+      if (participants.length < numberOfWinners) return;
       
-      for (let spin = 0; spin < numberOfWinners; spin++) {
-        // Seleccionar ganador para este giro
-        const randomIndex = Math.floor(Math.random() * availableParticipants.length);
-        const winner = availableParticipants[randomIndex];
-        selectedWinners.push(winner.name);
-        availableParticipants.splice(randomIndex, 1);
-        
-        // Calcular rotación para este ganador
-        const winnerIndex = participants.findIndex(p => p.id === winner.id);
-        const extraSpins = 3 + Math.random() * 2; // Menos giros por cada vuelta
-        const targetRotation = rotation + (360 * extraSpins) + (360 - (winnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
-        
-        setRotation(targetRotation);
-        
-        // Esperar a que termine la animación antes del siguiente giro
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Mostrar ganador temporal si hay más giros
-        if (spin < numberOfWinners - 1) {
-          setWinners([...selectedWinners]);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+      setSpinState({
+        currentSpin: 1,
+        totalSpins: numberOfWinners,
+        winners: [],
+        availableParticipants: [...participants]
+      });
+      setWinners([]);
+    }
+    
+    setWinners([]);
+    // Seleccionar ganador del giro actual
+    const randomIndex = Math.floor(Math.random() * spinState.availableParticipants.length);
+    const winner = spinState.availableParticipants[randomIndex];
+    
+    // Calcular rotación para este ganador
+    const winnerIndex = participants.findIndex(p => p.id === winner.id);
+    const degreesPerSlice = 360 / participants.length;
+    const extraSpins = 3 + Math.random() * 2;
+    const targetRotation = rotation + (360 * extraSpins) + (360 - (winnerIndex * degreesPerSlice)) - (degreesPerSlice / 2);
+    
+    setRotation(targetRotation);
+    
+    // Después de la animación, actualizar estado
+    setTimeout(() => {
+      const newWinners = [...spinState.winners, winner.name];
+      const newAvailableParticipants = spinState.availableParticipants.filter(p => p.id !== winner.id);
+      
+      setWinners(newWinners);
+      
+      if (spinState.currentSpin >= spinState.totalSpins) {
+        // Todos los giros completados
+        setSpinState({
+          currentSpin: 0,
+          totalSpins: 0,
+          winners: [],
+          availableParticipants: []
+        });
+      } else {
+        // Preparar siguiente giro
+        setSpinState({
+          ...spinState,
+          currentSpin: spinState.currentSpin + 1,
+          winners: newWinners,
+          availableParticipants: newAvailableParticipants
+        });
       }
       
-      // Mostrar todos los ganadores finales
-      setWinners(selectedWinners);
       setIsSpinning(false);
-    };
-    
-    performSpins();
+    }, 3000);
   };
 
   const resetRaffle = () => {
     setWinners([]);
     setRotation(0);
     setIsSpinning(false);
+    setSpinState({
+      currentSpin: 0,
+      totalSpins: 0,
+      winners: [],
+      availableParticipants: []
+    });
   };
 
   const shareWinners = () => {
-    const winnersText = winners.length === 1 
-      ? `🎉 ¡Ganador de "${raffleName}": ${winners[0]}!`
-      : `🎉 ¡Ganadores de "${raffleName}": ${winners.join(', ')}!`;
+    // Crear texto con ganadores en orden de premios (del último al primero)
+    let winnersText = `🎉 Resultados de "${raffleName}":\n\n`;
     
-    const prizeText = prizes.length > 0 
-      ? `\n🎁 Premios: ${prizes.map(p => p.name).join(', ')}`
-      : '';
-    
-    const shareText = `${winnersText}${prizeText}\n\n#Rifa #Sorteo #Ganador`;
-    
-    if (navigator.share) {
-      navigator.share({
-        title: `Ganador de ${raffleName}`,
-        text: shareText,
+    if (prizes.length > 0 && winners.length > 0) {
+      // Mostrar ganadores con sus premios correspondientes
+      winners.forEach((winner, index) => {
+        const prizeIndex = Math.min(index, prizes.length - 1);
+        const prize = prizes[prizes.length - 1 - prizeIndex]; // Orden inverso
+        winnersText += `🏆 ${winner} - ${prize.name}\n`;
       });
     } else {
-      // Crear URLs para compartir
-      const encodedText = encodeURIComponent(shareText);
-      const currentUrl = encodeURIComponent(window.location.href);
-      
-      // Abrir directamente en la red social más popular (Twitter)
-      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodedText}`;
-      window.open(twitterUrl, '_blank', 'width=600,height=400');
+      // Solo mostrar ganadores sin premios
+      if (winners.length === 1) {
+        winnersText += `🏆 Ganador: ${winners[0]}`;
+      } else {
+        winners.forEach((winner, index) => {
+          winnersText += `🏆 ${index + 1}° lugar: ${winner}\n`;
+        });
+      }
     }
+    
+    winnersText += `\n#Rifa #Sorteo #Ganador`;
+    
+    const encodedText = encodeURIComponent(winnersText);
+    const currentUrl = encodeURIComponent(window.location.href);
+    
+    // Crear modal de opciones de compartir
+    const shareOptions = [
+      {
+        name: 'WhatsApp',
+        url: `https://wa.me/?text=${encodedText}`,
+        color: 'bg-green-500 hover:bg-green-600'
+      },
+      {
+        name: 'Facebook',
+        url: `https://www.facebook.com/sharer/sharer.php?u=${currentUrl}&quote=${encodedText}`,
+        color: 'bg-blue-600 hover:bg-blue-700'
+      },
+      {
+        name: 'Instagram',
+        url: `https://www.instagram.com/`,
+        color: 'bg-pink-500 hover:bg-pink-600'
+      },
+      {
+        name: 'Email',
+        url: `mailto:?subject=Resultados de ${encodeURIComponent(raffleName)}&body=${encodedText}`,
+        color: 'bg-gray-600 hover:bg-gray-700'
+      }
+    ];
+    
+    // Crear y mostrar modal
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">Compartir Resultados</h3>
+        <div class="grid grid-cols-2 gap-3">
+          ${shareOptions.map(option => `
+            <button onclick="window.open('${option.url}', '_blank', 'width=600,height=400'); document.body.removeChild(this.closest('.fixed'))" 
+                    class="flex items-center justify-center space-x-2 px-4 py-3 ${option.color} text-white rounded-lg font-semibold transition-colors">
+              <span>${option.name}</span>
+            </button>
+          `).join('')}
+        </div>
+        <button onclick="document.body.removeChild(this.closest('.fixed'))" 
+                class="w-full mt-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-colors">
+          Cerrar
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -541,14 +620,19 @@ function App() {
             <div className="flex space-x-4">
               <button
                 onClick={spinWheel}
-                disabled={participants.length < numberOfWinners || isSpinning}
+                disabled={(spinState.currentSpin === 0 && participants.length < numberOfWinners) || isSpinning}
                 className={`px-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all duration-200 ${
-                  participants.length < numberOfWinners || isSpinning
+                  (spinState.currentSpin === 0 && participants.length < numberOfWinners) || isSpinning
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transform hover:scale-105'
                 }`}
               >
-                {isSpinning ? 'Girando...' : '🎲 Girar Ruleta'}
+                {isSpinning 
+                  ? 'Girando...' 
+                  : spinState.currentSpin === 0 
+                    ? '🎲 Girar Ruleta' 
+                    : `🎲 Giro ${spinState.currentSpin}/${spinState.totalSpins}`
+                }
               </button>
               
               <button
@@ -564,34 +648,44 @@ function App() {
               <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-2xl text-center">
                 <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-300" />
                 <h2 className="text-2xl font-bold mb-2">
-                  {winners.length === 1 ? '¡Ganador!' : '¡Ganadores!'}
+                  {spinState.currentSpin > 0 && spinState.currentSpin <= spinState.totalSpins 
+                    ? `¡Ganador ${spinState.currentSpin}!` 
+                    : winners.length === 1 ? '¡Ganador!' : '¡Ganadores!'
+                  }
                 </h2>
                 <div className="space-y-2">
                   {winners.map((winner, index) => (
                     <p key={index} className="text-xl font-semibold">
-                      {winners.length > 1 && `${index + 1}. `}{winner}
+                      {prizes.length > 0 && winners.length > 1 
+                        ? `${winner} - ${prizes[Math.min(prizes.length - 1 - index, prizes.length - 1)]?.name || 'Premio'}`
+                        : winners.length > 1 
+                          ? `${index + 1}. ${winner}`
+                          : winner
+                      }
                     </p>
                   ))}
                 </div>
-                {prizes.length > 0 && (
+                {prizes.length > 0 && spinState.currentSpin === 0 && (
                   <div className="mt-4 pt-4 border-t border-blue-400">
                     <h3 className="text-lg font-semibold mb-2">🎁 Premios:</h3>
                     <div className="space-y-1">
                       {prizes.map((prize, index) => (
                         <p key={prize.id} className="text-sm">
-                          {prize.name}{prize.description && ` - ${prize.description}`}
+                          {index + 1}° {prize.name}{prize.description && ` - ${prize.description}`}
                         </p>
                       ))}
                     </div>
                   </div>
                 )}
-                <button
-                  onClick={shareWinners}
-                  className="mt-4 px-6 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center space-x-2 mx-auto"
-                >
-                  <Share2 className="h-5 w-5" />
-                  <span>Compartir Resultado</span>
-                </button>
+                {spinState.currentSpin === 0 && (
+                  <button
+                    onClick={shareWinners}
+                    className="mt-4 px-6 py-2 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center space-x-2 mx-auto"
+                  >
+                    <Share2 className="h-5 w-5" />
+                    <span>Compartir Resultado</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -682,6 +776,17 @@ function App() {
                 <div className="mt-4 p-3 bg-yellow-100 border border-yellow-300 rounded-xl">
                   <p className="text-yellow-800 text-sm font-semibold">
                     ⚠️ Necesitas al menos {numberOfWinners} participantes para realizar la rifa
+                  </p>
+                </div>
+              )}
+              
+              {spinState.currentSpin > 0 && (
+                <div className="mt-4 p-3 bg-blue-100 border border-blue-300 rounded-xl">
+                  <p className="text-blue-800 text-sm font-semibold">
+                    🎯 Giro {spinState.currentSpin} de {spinState.totalSpins} - {prizes.length > 0 
+                      ? `Sorteando: ${prizes[Math.min(prizes.length - spinState.currentSpin, prizes.length - 1)]?.name || 'Premio'}`
+                      : `Seleccionando ganador ${spinState.currentSpin}`
+                    }
                   </p>
                 </div>
               )}
